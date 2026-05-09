@@ -28,6 +28,7 @@ jobs:
         run: |
           conda install -n r-reticulate numpy pandas matplotlib polars
         # 추가로 필요한 패키지 설치
+
         shell: bash -l {0}
 
       - name: Set up R
@@ -42,7 +43,7 @@ jobs:
         env:
           GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          install.packages(c("reticulate", "knitr", "rmarkdown"))
+          install.packages(c("reticulate", "knitr", "rmarkdown", "tidyverse", "quarto", "babynames", "Lahman", "NHANES", "patchwork", "mosaicData"))
         # 추가로 필요한 패키지 설치
         shell: Rscript {0}
 
