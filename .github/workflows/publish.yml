@@ -43,7 +43,7 @@ jobs:
         env:
           GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          install.packages(c("reticulate", "knitr", "rmarkdown", "tidyverse", "quarto", "babynames", "Lahman", "NHANES", "patchwork", "mosaicData"))
+          install.packages(c("reticulate", "knitr", "rmarkdown", "tidyverse", "quarto", "babynames", "Lahman", "NHANES", "patchwork", "mosaicData", "mdsr", "ggplot2", "plotly", "gganimate", "gifski", "transformr", "ggtext", "ggrepel", "ggforce", "ggdist", "ggbeeswarm", "ggsci", "ggthemes", "ggpubr", "ggExtra", "ggVennDiagram"))
         # 추가로 필요한 패키지 설치
         shell: Rscript {0}
 
