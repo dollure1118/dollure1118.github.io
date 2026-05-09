@@ -5,7 +5,7 @@ author: "원중호"
 date: today
 date-format: "MMMM YYYY"
 institute: 서울대학교 통계학과
-format:
+format: 
   html:
       embed-resources: true
   ipynb: default
@@ -85,7 +85,21 @@ library(babynames)
 
 glimpse(babynames)
 mdsr::make_babynames_dist 
-# 문제 : “2014년에 살아 있을 것으로 추정되는 사람 수” 열을 추가한 tibble을 만드는 것
+# 문제 : 각 이름을 가진 사람들이 2014년에 몇 명 정도 살아 있을지 추정한 열을 기존 tibble에 추가하는 것
+
+# 1. lifetables 자료 정리
+actuarial <- lifetables %>%
+  mutate(
+    age_today = x,
+    alive_prob = lx / 100000,      # lx = 10만 명 기준 x세까지 산 사람 수 
+    more_years = ex,               # ex = 앞으로 더 살 것으로 기대되는 평균 연수 
+    life_exp = x + ex              # 총 기대수명 
+  ) %>%
+  filter(year + x == 2014) %>%     # 태어난 연도 + 나이 == 2014인 데이터만 추출 
+  select(year, sex, age_today, alive_prob, life_exp)
+
+# 2. 연도 범위 만들기
+years <- min(actuarial$year):max(actuarial$year)
 
 # 생존확률 자료가 모든 출생연도별로 있지 않고 10년 단위로 존재한다. 
 # 따라서 이를 연속으로 만들기 위해 선형보간 함수를 사용한다. 
@@ -98,21 +112,9 @@ approximate <- function(data, years) {
     as.data.frame()
 }
 
-# 1. lifetables 자료 정리
-actuarial <- lifetables %>%
-  mutate(
-    age_today = x,
-    alive_prob = lx / 100000,
-    more_years = ex,
-    life_exp = x + ex
-  ) %>%
-  filter(year + x == 2014) %>%
-  select(year, sex, age_today, alive_prob, life_exp)
 
-# 2. 연도 범위 만들기
-years <- min(actuarial$year):max(actuarial$year)
-
-# 3. 남자, 여자 각각 생존확률 선형보간
+# 그런데 lifetables 데이터에 sex 열이 따로 있다
+# 이는 성별에 따라 생존율이 다르다는 의미이므로 두 범주를 분류하여 계산한다 
 men <- actuarial %>%
   filter(sex == "M") %>%
   approximate(years = years)
@@ -121,7 +123,7 @@ women <- actuarial %>%
   filter(sex == "F") %>%
   approximate(years = years)
 
-# 4. 보간 결과 합치기
+# 4. 보간 결과 합
 actuarial_interp <- bind_rows(men, women) %>%
   rename(
     year = x,
@@ -137,10 +139,11 @@ BabynamesDist <- babynames %>%
   mutate(
     count_thousands = n / 1000,
     age_today = 2014 - year,
-    est_alive_today = n * alive_prob
+    est_alive_today = n * alive_prob    # 2014년에도 살아있을 확률
   )
 
 head(BabynamesDist)
+
 
 # 6.6.10.
 library(tidyverse)
@@ -150,16 +153,9 @@ cubs_hr <- Teams %>%
   filter(teamID == "CHN") %>%
   select(yearID, HR, HRA) %>%
   pivot_longer(
-    cols = c(HR, HRA),
-    names_to = "type",
+    cols = c(HR, HRA),               # HRA : 허용한 홈런 수 
+    names_to = "type",               # HR 과 HRA 를 같은 변수 구조 안에서 비교할 수 있게 만든다 
     values_to = "home_runs"
-  ) %>%
-  mutate(
-    type = recode(
-      type,
-      HR = "Hit by Cubs",
-      HRA = "Allowed by Cubs"
-    )
   )
 
 head(cubs_hr)
@@ -168,7 +164,7 @@ ggplot(cubs_hr, aes(x = yearID, y = home_runs)) +
   geom_line() +
   facet_wrap(~ type) +
   labs(
-    title = "Chicago Cubs Home Runs: Hit vs Allowed",
+    title = "CHN Home Runs: HR vs HR Allowed",
     x = "Year",
     y = "Number of Home Runs"
   )
