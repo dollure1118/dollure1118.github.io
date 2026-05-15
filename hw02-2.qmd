@@ -1,0 +1,1205 @@
+---
+title: "숙제 2"
+subtitle: "데이터과학 입문"
+author: "원중호"
+date: today 
+date-format: "MMMM YYYY"
+institute: 서울대학교 통계학과
+format: 
+  html:
+      embed-resources: false
+  ipynb: default
+
+mainfont: "Noto Sans Korean Light"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval = TRUE, warning = FALSE, message = FALSE, fig.width=6, fig.height=4, out.width = "70%", fig.align = "center", python.reticulate = TRUE)  
+options(knitr.table.format = "html")
+if (file.exists("/opt/homebrew/bin/conda")) {
+  reticulate::use_condaenv(
+    condaenv = "introds",
+    conda = "/opt/homebrew/bin/conda",
+    required = FALSE
+  )
+} # for persistency
+```
+
+
+# 2부  데이터 분석 실무
+
+### 스테로이드 시대 (계속)
+
+미국 메이저리그 야구(MLB)에서 1990년대 중반에서 2000년대 초반의 기간은 선수들의 운동수행능력 향상 약물(performance-enhancing drugs, 이하 PEDs) 사용이 만연해 있던 시기로 알려져 있다. 본 과제에서는 해당 시기에 PEDs의 사용이 실제 선수들의 경기력에 영향을 미쳤다는 증거를 통계적으로 찾을 수 있는지 알아본다. 데이터는 Lahman 패키지(`Lahman` in R, `pylahman` in Python)를 사용한다. 
+
+### 분석 관련 공통 지침
+
+1.	관측단위(observational unit)는 `playerID`와 `yearID`의 고유한 조합으로 한다. 즉, 데이터프레임의 각 행은 한 선수의 특정 연도에 해당해야 하고(예: 2019년 류현진), 한 선수의 특정 연도가 두 번 이상 나타나서는 안 된다. 이적을 한 경우 원자료에서는 두 번 이상 나타날 수 있으므로 주의해야 한다.
+2.	데이터 분석을 하는 중에 필요한 경우 pivoting으로 각 행이 한명의 선수에 해당하는 wide format data를 만들어서 연도간 비교를 하는 것은 허용한다.
+
+
+## 문제 2-1
+
+먼 과거 (1982-1993), 스테로이드 시대 (1994-2005), 최근 (2006-2025) 동안 타율(`BA = H/AB`로 계산)이 어떻게 다른지 비교해보자. `AB > 30`인 관측치만 사용한다.
+
+a.  3개 기간 동안의 타율 분포를 시각화하라. 각 시기별 분포가 정규분포를 따른다고 할 수 있는가? 
+
+b.  3개 기간 동안 평균 타율의 차이를 정규분포를 가정한 선형모형을 이용하여 검정하라. 사용된 코딩행렬은 이들 기간의 순서가 있음을 반영하여야 한다. 모형적합과 추론 결과에 대해 해석하라. 특히 적합된 회귀 계수들의 값에 대한 해석, 가설검정 결과에 대한 해석, 그리고 구간추정치 계산을 수행하여야 한다. 
+
+c.  b항과 같은 분석을 하되 정규분포를 가정한 추론이 아닌 부트스트래핑에 의한 추론을 실시하라. 특히 적합된 회귀 계수들에 대한 구간추정치를 계산하고 b항의 결과와 비교하라. 
+
+*답안 작성시 고려할 점*. a항에서 시각화한 각 시기별 분포를 생각할 때, b항에서 사용한 정규분포 가정은 타당하다고 할 수 있는가? b항과 c항에서 얻은 구간추정치가 유사하다면 그 이유는 무엇인가?
+
+### 답안
+
+::: {.panel-tabset}
+
+## R
+
+```{r}
+# 2-1   
+library(mdsr)        # skim() 사용
+library(broom)       # lm() 결과를 tidy한 표로 정리
+library(tidyverse)
+library(Lahman)
+library(NHANES)
+library(patchwork)
+library(broom)
+library(mosaicData)
+  
+
+# 전처리 
+batting_year <- Batting %>%
+  group_by(playerID, yearID) %>%        
+  summarize(
+    H = sum(H, na.rm = TRUE),      
+    AB = sum(AB, na.rm = TRUE),    
+    HR = sum(HR, na.rm = TRUE),    
+    .groups = "drop"
+  )
+
+batting_era <- batting_year %>%
+  filter(yearID >= 1982, yearID <= 2025) %>%       # 1982-2025년
+  mutate(
+    era = case_when(
+      yearID >= 1982 & yearID <= 1993 ~ "past",    # 3개 기간에 맞게 분류 
+      yearID >= 1994 & yearID <= 2005 ~ "steroid",
+      yearID >= 2006 & yearID <= 2025 ~ "recent"
+    )
+  ) %>%
+  filter(AB > 30) %>%                 # 조건 
+  mutate(
+    BA = H / AB,                      
+    era = factor(
+      era,
+      levels = c("past", "steroid", "recent"),
+      ordered = TRUE                  # 시기의 순서가 있으므로 ordered factor로 지정
+    )
+  )
+
+batting_era %>%                       
+  group_by(era) %>%                   # 시기별 표본 수와 요약 통계
+  summarize(
+    n = n(),                          
+    mean_BA = mean(BA),               
+    sd_BA = sd(BA),                   
+    q25 = quantile(BA, 0.25),         
+    median_BA = median(BA),           
+    q75 = quantile(BA, 0.75)          
+  )
+
+# a. 시기별 타율 분포 시각화
+ggplot(batting_era, aes(sample = BA)) +    # QQ plot 
+  stat_qq() +
+  stat_qq_line(color = "red") +
+  facet_grid(era ~ .) +
+  labs(
+    title = "Q-Q Plot of BA by Era"
+  )                # 대체로 정규분포를 따른다고 할 수 있다 
+
+# b. 정규분포를 가정한 선형모형
+contrasts(batting_era$era) <- contr.poly(3)   # 순서가 있음을 반영 
+              
+# 모형 : BA=Beta0+Beta_L*era.L+Beta_Q*era.Q + e
+# H0 : Beta_L=Betta_Q=0
+mod_ba <- lm(BA ~ era, data = batting_era)    # 여기서 오차는 정규분포를 가정한다  
+
+
+broom::tidy(mod_ba, conf.int = TRUE)   # + 구간추정치
+# 세 변수 모두 p-value가 매우 작으므로 유의미하다고 주장한다 
+# era.L이 0에 가까운 음수인 것으로 보아 타율이 갈수록 높아진다고 보기 어렵다 
+# era.Q 역시 0에 가까운 음수로 유의하다. 단순 증감이 아니라 steroid시대가 특별히 높음을 시사한다. 
+
+
+broom::tidy(mod_ba, conf.int = TRUE)
+glance(mod_ba)      # 회귀 결과 확인
+# era에 대한 F-검정의 p-value가 0에 가까우므로 세 기간의 평균 타율이 모두 같다는 귀무가설을 기각한다. 
+# 즉, 평균 타율은 기간에 따라 차이가 있다고 볼 수 있다. 
+
+
+
+# c. 부트스트래핑에 의한 추론
+set.seed(101)
+num_trials <- 1000   # 반복 횟수 1000회 
+
+boot_coef <- 1:num_trials %>%
+  map_dfr(
+    ~ batting_era %>%
+      slice_sample(n = nrow(batting_era), replace = TRUE) %>%   # 원래데이터 수만큼 표집, 복원추출
+      {
+        mod <- lm(BA ~ era, data = .)                      # 재표집 자료에 같은 모형 적합
+        tibble(
+          intercept = coef(mod)[1],
+          era_L = coef(mod)[2],
+          era_Q = coef(mod)[3]
+        )
+      }
+  )
+
+boot_coef %>%
+  select(intercept, era_L, era_Q) %>%           # 부트스트랩된 회귀계수들의 분포 요약
+  skim()
+
+boot_ci <- boot_coef %>%                        # 구간추정치 계산 
+  summarize(
+    intercept_lower = quantile(intercept, 0.025),
+    intercept_upper = quantile(intercept, 0.975),
+    
+    era_L_lower = quantile(era_L, 0.025),
+    era_L_upper = quantile(era_L, 0.975),
+    
+    era_Q_lower = quantile(era_Q, 0.025),
+    era_Q_upper = quantile(era_Q, 0.975)
+  )
+
+boot_ci  # 두 변수 신뢰구간이 0을 포함하지 않는다. 따라서 두 변수 모두 유의하며, 역시 H0을 기각한다. 
+
+# b항과 c항에서 얻은 구간 추정치는 상당히 유사하다. 
+# 이는 정규선형모형은 모형의 흔들림을 이론적 표준오차와 t분포로 계산하는 데 반해, 부트스트랩은 반복 복원추출로 흉내내기 때문이다.
+# 회귀계수는 결국 표본평균·평균차·대비의 형태이므로, 표본크기가 충분하면 CLT에 의해 정규분포에 가까워진다.
+# 따라서 정규선형모형의 t-기반 신뢰구간과 부트스트랩으로 재현한 신뢰구간이 서로 비슷하게 나올 수 있다.
+# 또한 회귀계수 추론 목적에서는 정규성을 가정한 선형모형이 크게 무리 없어 보인다. 
+
+```
+
+## Python
+
+```{python}
+# 2-1
+import pylahman
+import sys
+import numpy as np
+import pandas as pd
+import statsmodels.formula.api as smf
+
+from patsy.contrasts import Poly
+from plotnine import (
+    ggplot, aes, stat_qq, stat_qq_line, facet_grid,
+    labs, theme_minimal
+)
+
+Batting=pd.DataFrame(pylahman.Batting())
+
+batting_year = (  # 전처리
+    Batting
+    .groupby(["playerID", "yearID"], as_index=False)
+    .agg(
+        H=("H", lambda x: x.fillna(0).sum()),
+        AB=("AB", lambda x: x.fillna(0).sum()),
+        HR=("HR", lambda x: x.fillna(0).sum())
+    )
+)
+
+batting_era = (
+    batting_year
+    .query("1982 <= yearID <= 2025")
+    .copy()
+)
+
+batting_era["era"] = np.select(
+    [
+        (batting_era["yearID"] >= 1982) & (batting_era["yearID"] <= 1993),
+        (batting_era["yearID"] >= 1994) & (batting_era["yearID"] <= 2005),
+        (batting_era["yearID"] >= 2006) & (batting_era["yearID"] <= 2025)
+    ],
+    [
+        "past",
+        "steroid",
+        "recent"
+    ],
+    default=None
+)
+
+batting_era = (
+    batting_era
+    .query("AB > 30")
+    .assign(
+        BA=lambda df: df["H"] / df["AB"]
+    )
+)
+
+batting_era["era"] = pd.Categorical(
+    batting_era["era"],
+    categories=["past", "steroid", "recent"],
+    ordered=True
+)
+
+era_summary = (        # 시기별 표본 수와 요약 통계
+    batting_era
+    .groupby("era", observed=False)
+    .agg(
+        n=("BA", "size"),
+        mean_BA=("BA", "mean"),
+        sd_BA=("BA", "std"),
+        q25=("BA", lambda x: x.quantile(0.25)),
+        median_BA=("BA", "median"),
+        q75=("BA", lambda x: x.quantile(0.75))
+    )
+    .reset_index()
+)
+
+era_summary
+
+# a. 시기별 타율 분포 시각화
+p=(          # 시기별 표본 수와 요약 통계
+    ggplot(batting_era, aes(sample="BA"))
+    + stat_qq()
+    + stat_qq_line(color="red")
+    + facet_grid("era ~ .")
+    + labs(
+        title="Q-Q Plot of BA by Era"
+    )
+    + theme_minimal()
+)
+
+print(p)
+# 왼쪽 아래에서 조금 엇나가지만 대체로 정규분포를 따른다고 할 수 있다.
+
+# b. 정규분포를 가정한 선형모형
+mod_ba = smf.ols(
+    formula="BA ~ C(era, Poly)",
+    data=batting_era
+).fit()
+
+# broom::tidy(mod_ba, conf.int = TRUE)에 대응
+tidy_mod_ba = pd.DataFrame({
+    "term": mod_ba.params.index,
+    "estimate": mod_ba.params.values,
+    "std_error": mod_ba.bse.values,
+    "statistic": mod_ba.tvalues.values,
+    "p_value": mod_ba.pvalues.values
+})
+
+conf_int = mod_ba.conf_int()
+tidy_mod_ba["conf_low"] = conf_int[0].values
+tidy_mod_ba["conf_high"] = conf_int[1].values
+
+tidy_mod_ba
+
+print(mod_ba.summary())
+
+f_statistic = mod_ba.fvalue
+f_p_value = mod_ba.f_pvalue  # era에 대한 F-검정의 p-value
+
+pd.DataFrame({
+    "f_statistic": [f_statistic],
+    "f_p_value": [f_p_value]
+})
+
+# era에 대한 F-검정의 p-value가 0에 가까우므로 세 기간의 평균 타율이 모두 같다는 귀무가설을 기각한다.
+# 즉, 평균 타율은 기간에 따라 차이가 있다고 볼 수 있다.
+
+# c. 부트스트래핑에 의한 추론
+np.random.seed(101)
+num_trials = 1000   # 반복 횟수 1000회
+
+def fit_bootstrap_model(data):
+    
+    mod = smf.ols(
+        formula="BA ~ C(era, Poly)",
+        data=data
+    ).fit()
+    
+    params = mod.params
+    
+    return pd.Series({
+        "intercept": params["Intercept"],
+        "era_L": params["C(era, Poly).Linear"],
+        "era_Q": params["C(era, Poly).Quadratic"]
+    })
+
+boot_coef = pd.concat(
+    [
+        fit_bootstrap_model(
+            batting_era
+            .sample(
+                n=len(batting_era),
+                replace=True
+            )
+            .assign(
+                era=lambda df: pd.Categorical(
+                    df["era"],
+                    categories=["past", "steroid", "recent"],
+                    ordered=True
+                )
+            )
+        )
+        for _ in range(num_trials)
+    ],
+    axis=1
+).T
+
+boot_summary = (  # 부트스트랩된 회귀계수들의 분포 요약
+    boot_coef[["intercept", "era_L", "era_Q"]]
+    .describe()
+    .T
+)
+
+boot_summary
+
+boot_ci = pd.DataFrame({   # 구간추정치 계산 
+    "intercept_lower": [boot_coef["intercept"].quantile(0.025)],
+    "intercept_upper": [boot_coef["intercept"].quantile(0.975)],
+    
+    "era_L_lower": [boot_coef["era_L"].quantile(0.025)],
+    "era_L_upper": [boot_coef["era_L"].quantile(0.975)],
+    
+    "era_Q_lower": [boot_coef["era_Q"].quantile(0.025)],
+    "era_Q_upper": [boot_coef["era_Q"].quantile(0.975)]
+})
+
+boot_ci
+
+# R과 유사한 결과 
+```
+
+:::
+
+## 문제 2-2
+
+위에서 정한 각 기간에 대해서 홈런수(`HR`) 상위 1%에 해당하는 사례들만을 추출하자. (단, 상위 1%를 정할 때 `AB <= 30`인 관측치를 버리지 않는다.) 해당 사례들의 홈런수(`HR`)에 대해 문제 2-1과 같은 방식으로 분석하라. 
+
+### 답안
+
+::: {.panel-tabset}
+
+## R
+
+```{r}
+# 2-2
+library(mdsr)        # skim() 사용
+library(broom)       # lm() 결과를 tidy한 표로 정리
+
+batting_year <- Batting %>%         # 전처리
+  group_by(playerID, yearID) %>%        
+  summarize(
+    HR = sum(HR, na.rm = TRUE),    # 118184명 
+    .groups = "drop"
+  )
+
+batting_top1_hr <- batting_year %>%
+  filter(HR >= quantile(HR, 0.99, na.rm = TRUE))   # 추출: 1214(동점자로 인해 조금 초과)
+
+batting_era <- batting_top1_hr %>%
+  filter(yearID >= 1982, yearID <= 2025) %>%       # 1982-2025년
+  mutate(
+    era = case_when(
+      yearID >= 1982 & yearID <= 1993 ~ "past",    # 3개 기간에 맞게 분류 
+      yearID >= 1994 & yearID <= 2005 ~ "steroid",
+      yearID >= 2006 & yearID <= 2025 ~ "recent"
+    )
+  ) %>%
+  mutate(
+    era = factor(
+      era,
+      levels = c("past", "steroid", "recent"),
+      ordered = TRUE                  # 시기의 순서가 있으므로 ordered factor로 지정
+    )
+  )
+
+batting_era %>%                       
+  group_by(era) %>%                   # 시기별 표본 수와 요약 통계
+  summarize(
+    n = n(),                          
+    mean_HR = mean(HR),               
+    sd_HR = sd(HR),                   
+    q25 = quantile(HR, 0.25),         
+    median_HR = median(HR),           
+    q75 = quantile(HR, 0.75)          
+  )
+
+# a. 시기별 타율 분포 시각화
+ggplot(batting_era, aes(sample = HR)) +  #QQ plot을 사용
+  stat_qq() +
+  stat_qq_line(color = "red") +
+  facet_grid(era ~ .) +
+  labs(
+    title = "Q-Q Plot of HR by Era"
+  )
+
+# HR은 정수형 자료이기 때문에 매끄러이 퍼진 모습이 아니다. 오른쪽 꼬리가 두꺼운 모형으로, 정규분포를 따른다고 보기 어렵다. 
+
+# b. 정규분포를 가정한 선형모형
+contrasts(batting_era$era) <- contr.poly(3) # 순서가 있음을 반영 
+
+# 모형 : HR=Beta0+Beta_L*era.L+Beta_Q*era.Q + e
+# H0 : Beta_L=Betta_Q=0
+mod_ba <- lm(HR ~ era, data = batting_era)  # HR을 반응변수, era를 설명변수로 하는 모형 적합
+# 여기서 오차는 정규분포를 가정한다  
+
+
+broom::tidy(mod_ba, conf.int = TRUE)   # + 구간추정치
+# 세 변수 모두 p-value가 매우 작으므로 유의미하다고 주장한다 
+# era.L이 0에 가까운 양수인 것으로 보아 타율이 갈수록 높아진다고 볼 수 있다
+# 다만 p-value가 0.01보다는 큰 값이므로 엄밀하게 유의하다고 보기는 어렵다. 
+# era.Q p-value가 매우 작고, 신뢰구간도 0을 전혀 포함하지 않는다. 평균치가 음수이므로 
+# steroid 시대가 양끝 시기보다 특별히 높은 곡선적 패턴이 강하게 나타난다고 할 수 있다. 
+
+
+broom::tidy(mod_ba, conf.int = TRUE)
+glance(mod_ba)      # 회귀 결과 확인
+# era에 대한 F-검정의 p-value가 0에 가까우므로 세 기간의 평균 타율이 모두 같다는 귀무가설을 기각한다. 
+# 즉, 평균 타율은 기간에 따라 차이가 있다고 볼 수 있다. 
+
+
+# c. 부트스트래핑에 의한 추론
+set.seed(101)
+num_trials <- 1000   # 반복 횟수 1000회 
+
+boot_coef <- 1:num_trials %>%
+  map_dfr(
+    ~ batting_era %>%
+      slice_sample(n = nrow(batting_era), replace = TRUE) %>%   # 원래데이터와 같은 만큼 표집, 복원추출
+      {
+        mod <- lm(HR ~ era, data = .)                      # 재표집 자료에 같은 모형 적합
+        tibble(
+          intercept = coef(mod)[1],
+          era_L = coef(mod)[2],
+          era_Q = coef(mod)[3]
+        )
+      }
+  )
+
+boot_ci <- boot_coef %>%                        # 구간추정치 계산 
+  summarize(
+    intercept_lower = quantile(intercept, 0.025),
+    intercept_upper = quantile(intercept, 0.975),
+    
+    era_L_lower = quantile(era_L, 0.025),
+    era_L_upper = quantile(era_L, 0.975),
+    
+    era_Q_lower = quantile(era_Q, 0.025),
+    era_Q_upper = quantile(era_Q, 0.975)
+  )
+
+boot_coef %>%
+  select(intercept, era_L, era_Q) %>%           # 부트스트랩된 회귀계수들의 분포 요약
+  skim()
+
+boot_ci 
+# 마찬가지로 era.L과 era.Q의 신뢰구간이 0을 포함하지 않는다.따라서 두 변수 모두 유의하며, 역시 귀무가설을 기각한다. 
+
+# BA 비교와 달리 HR 자료는 Q-Q plot상 정규분포에서 다소 벗어난다.
+# 따라서 정규선형모형의 t-검정, F-검정, 신뢰구간은 엄밀한 정규성 가정하에서는 조심스럽게 해석해야 한다.
+# 다만 이번 경웅에는 lm 신뢰구간과 bootstrap 신뢰구간이 비슷하고, 둘 다 0을 포함하지 않는다.
+# 따라서 정규성은 약하지만 시대별 차이에 대한 결론은 비교적 안정적으로 귀무가설을 기각할 수 있다. 
+
+```
+
+## Python
+
+```{python}
+# 2-2
+import sys
+import numpy as np
+import pandas as pd
+import statsmodels.formula.api as smf
+
+from patsy.contrasts import Poly
+from plotnine import (
+    ggplot, aes, stat_qq, stat_qq_line,
+    facet_grid, labs, theme_minimal
+)
+
+Batting=pd.DataFrame(pylahman.Batting())
+
+batting_year = (  # 전처리
+    Batting
+    .groupby(["playerID", "yearID"], as_index=False)
+    .agg(
+        HR=("HR", lambda x: x.fillna(0).sum())   # 선수-연도별 홈런 수 합산
+    )
+)
+
+hr_cutoff = batting_year["HR"].quantile(0.99)  # 상위 1% 추출
+
+batting_top1_hr = (
+    batting_year
+    .loc[batting_year["HR"] >= hr_cutoff]
+    .copy()
+)
+
+batting_era = (
+    batting_top1_hr
+    .query("1982 <= yearID <= 2025")
+    .copy()
+)
+
+batting_era["era"] = np.select(
+    [
+        (batting_era["yearID"] >= 1982) & (batting_era["yearID"] <= 1993),
+        (batting_era["yearID"] >= 1994) & (batting_era["yearID"] <= 2005),
+        (batting_era["yearID"] >= 2006) & (batting_era["yearID"] <= 2025)
+    ],
+    [
+        "past",
+        "steroid",
+        "recent"
+    ],
+    default=None
+)
+
+batting_era["era"] = pd.Categorical(
+    batting_era["era"],
+    categories=["past", "steroid", "recent"],
+    ordered=True
+)
+
+era_summary = (     # 시기별 표본 수와 요약 통계
+    batting_era
+    .groupby("era", observed=False)
+    .agg(
+        n=("HR", "size"),
+        mean_HR=("HR", "mean"),
+        sd_HR=("HR", "std"),
+        q25=("HR", lambda x: x.quantile(0.25)),
+        median_HR=("HR", "median"),
+        q75=("HR", lambda x: x.quantile(0.75))
+    )
+    .reset_index()
+)
+
+era_summary
+
+# a. 시기별 홈런 수 분포 시각화
+p =(
+    ggplot(batting_era, aes(sample="HR"))  # Q-Q plot을 사용
+    + stat_qq()
+    + stat_qq_line(color="red")
+    + facet_grid("era ~ .")
+    + labs(
+        title="Q-Q Plot of HR by Era"
+    )
+    + theme_minimal()
+)
+print(p)
+# 우선 HR은 정수형 자료이기 때문에 매끄러이 퍼진 모습이 아니다.
+# 오른쪽 꼬리가 두꺼운 모형으로, 정규분포를 따른다고 보기 어렵다.
+
+# b. 정규분포를 가정한 선형모형
+mod_ba = smf.ols(
+    formula="HR ~ C(era, Poly)",
+    data=batting_era
+).fit()
+
+
+tidy_mod_ba = pd.DataFrame({
+    "term": mod_ba.params.index,
+    "estimate": mod_ba.params.values,
+    "std_error": mod_ba.bse.values,
+    "statistic": mod_ba.tvalues.values,
+    "p_value": mod_ba.pvalues.values
+})
+
+conf_int = mod_ba.conf_int()
+tidy_mod_ba["conf_low"] = conf_int[0].values
+tidy_mod_ba["conf_high"] = conf_int[1].values
+
+tidy_mod_ba
+
+# era.L이 양수이면 시간이 갈수록 HR이 높아지는 선형 경향을 의미한다.
+# era.Q가 유의하고 음수이면 steroid 시대가 양끝 시기보다 특별히 높은 곡선적 패턴을 의미한다.
+
+# summary(mod_ba)에 대응
+print(mod_ba.summary())
+
+# era에 대한 F-검정의 p-value
+f_result = pd.DataFrame({
+    "f_statistic": [mod_ba.fvalue],
+    "f_p_value": [mod_ba.f_pvalue]
+})
+
+f_result
+
+# era에 대한 F-검정의 p-value가 0에 가까우면
+# 세 기간의 평균 홈런 수가 모두 같다는 귀무가설을 기각한다.
+# 즉, 평균 홈런 수는 기간에 따라 차이가 있다고 볼 수 있다.
+
+# c. 부트스트래핑에 의한 추론
+
+np.random.seed(101)
+num_trials = 1000   # 반복 횟수 1000회
+
+
+def fit_bootstrap_model(data):
+    
+    mod = smf.ols(
+        formula="HR ~ C(era, Poly)",
+        data=data
+    ).fit()
+    
+    params = mod.params
+    
+    return pd.Series({
+        "intercept": params["Intercept"],
+        "era_L": params["C(era, Poly).Linear"],
+        "era_Q": params["C(era, Poly).Quadratic"]
+    })
+
+
+boot_coef = pd.concat(
+    [
+        fit_bootstrap_model(
+            batting_era
+            .sample(
+                n=len(batting_era),
+                replace=True
+            )
+            .assign(
+                era=lambda df: pd.Categorical(
+                    df["era"],
+                    categories=["past", "steroid", "recent"],
+                    ordered=True
+                )
+            )
+        )
+        for _ in range(num_trials)
+    ],
+    axis=1
+).T
+
+boot_coef.head()
+
+# 구간추정치 계산
+boot_ci = pd.DataFrame({
+    "intercept_lower": [boot_coef["intercept"].quantile(0.025)],
+    "intercept_upper": [boot_coef["intercept"].quantile(0.975)],
+    
+    "era_L_lower": [boot_coef["era_L"].quantile(0.025)],
+    "era_L_upper": [boot_coef["era_L"].quantile(0.975)],
+    
+    "era_Q_lower": [boot_coef["era_Q"].quantile(0.025)],
+    "era_Q_upper": [boot_coef["era_Q"].quantile(0.975)]
+})
+
+boot_ci
+
+# 부트스트랩된 회귀계수들의 분포 요약
+boot_summary = (
+    boot_coef[["intercept", "era_L", "era_Q"]]
+    .describe()
+    .T
+)
+
+boot_summary
+
+# era.L과 era.Q의 신뢰구간이 0을 포함하지 않는다면
+# 두 변수 모두 유의하며, 역시 귀무가설을 기각한다고 볼 수 있다.
+
+# BA 비교와 달리 HR 자료는 Q-Q plot상 정규분포에서 다소 벗어난다.
+# 따라서 정규선형모형의 t-검정, F-검정, 신뢰구간은
+# 엄밀한 정규성 가정하에서는 조심스럽게 해석해야 한다.
+#
+# 다만 이번 경우에는 lm 신뢰구간과 bootstrap 신뢰구간이 비슷하고,
+# 둘 다 0을 포함하지 않는다면,
+# 정규성은 약하지만 시대별 차이에 대한 결론은 비교적 안정적으로
+# 귀무가설을 기각할 수 있다.# 2-2
+
+import sys
+import numpy as np
+import pandas as pd
+import statsmodels.formula.api as smf
+
+from patsy.contrasts import Poly
+from plotnine import (
+    ggplot, aes, stat_qq, stat_qq_line,
+    facet_grid, labs, theme_minimal
+)
+
+Batting=pd.DataFrame(pylahman.Batting())
+
+
+# 전처리
+batting_year = (
+    Batting
+    .groupby(["playerID", "yearID"], as_index=False)
+    .agg(
+        HR=("HR", lambda x: x.fillna(0).sum())   # 선수-연도별 홈런 수 합산
+    )
+)
+
+# 상위 1% 추출
+hr_cutoff = batting_year["HR"].quantile(0.99)
+
+batting_top1_hr = (
+    batting_year
+    .loc[batting_year["HR"] >= hr_cutoff]
+    .copy()
+)
+
+
+batting_era = (
+    batting_top1_hr
+    .query("1982 <= yearID <= 2025")
+    .copy()
+)
+
+batting_era["era"] = np.select(
+    [
+        (batting_era["yearID"] >= 1982) & (batting_era["yearID"] <= 1993),
+        (batting_era["yearID"] >= 1994) & (batting_era["yearID"] <= 2005),
+        (batting_era["yearID"] >= 2006) & (batting_era["yearID"] <= 2025)
+    ],
+    [
+        "past",
+        "steroid",
+        "recent"
+    ],
+    default=None
+)
+
+batting_era["era"] = pd.Categorical(
+    batting_era["era"],
+    categories=["past", "steroid", "recent"],
+    ordered=True
+)
+
+
+# 시기별 표본 수와 요약 통계
+era_summary = (
+    batting_era
+    .groupby("era", observed=False)
+    .agg(
+        n=("HR", "size"),
+        mean_HR=("HR", "mean"),
+        sd_HR=("HR", "std"),
+        q25=("HR", lambda x: x.quantile(0.25)),
+        median_HR=("HR", "median"),
+        q75=("HR", lambda x: x.quantile(0.75))
+    )
+    .reset_index()
+)
+
+era_summary
+
+# a. 시기별 홈런 수 분포 시각화
+# 정규분포 여부를 확인하기 위해 Q-Q plot을 사용한다.
+
+p=(
+    ggplot(batting_era, aes(sample="HR"))
+    + stat_qq()
+    + stat_qq_line(color="red")
+    + facet_grid("era ~ .")
+    + labs(
+        title="Q-Q Plot of HR by Era"
+    )
+    + theme_minimal()
+)
+print(p)
+
+# 우선 HR은 정수형 자료이기 때문에 매끄러이 퍼진 모습이 아니다.
+# 오른쪽 꼬리가 두꺼운 모형으로, 정규분포를 따른다고 보기 어렵다.
+
+# b. 정규분포를 가정한 선형모형
+
+mod_ba = smf.ols(
+    formula="HR ~ C(era, Poly)",
+    data=batting_era
+).fit()
+
+tidy_mod_ba = pd.DataFrame({
+    "term": mod_ba.params.index,
+    "estimate": mod_ba.params.values,
+    "std_error": mod_ba.bse.values,
+    "statistic": mod_ba.tvalues.values,
+    "p_value": mod_ba.pvalues.values
+})
+
+conf_int = mod_ba.conf_int()
+tidy_mod_ba["conf_low"] = conf_int[0].values
+tidy_mod_ba["conf_high"] = conf_int[1].values
+
+tidy_mod_ba
+
+# era.L이 양수이면 시간이 갈수록 HR이 높아지는 선형 경향을 의미한다.
+# era.Q가 유의하고 음수이면 steroid 시대가 양끝 시기보다 특별히 높은 곡선적 패턴을 의미한다.
+
+# summary(mod_ba)에 대응
+print(mod_ba.summary())
+
+# era에 대한 F-검정의 p-value
+f_result = pd.DataFrame({
+    "f_statistic": [mod_ba.fvalue],
+    "f_p_value": [mod_ba.f_pvalue]
+})
+
+f_result
+
+# era에 대한 F-검정의 p-value가 0에 가까우면 세 기간의 평균 홈런 수가 모두 같다는 귀무가설을 기각한다.
+# 즉, 평균 홈런 수는 기간에 따라 차이가 있다고 볼 수 있다.
+
+# c. 부트스트래핑에 의한 추론
+
+np.random.seed(101)
+num_trials = 1000   # 반복 횟수 1000회
+
+
+def fit_bootstrap_model(data):
+    
+    mod = smf.ols(
+        formula="HR ~ C(era, Poly)",
+        data=data
+    ).fit()
+    
+    params = mod.params
+    
+    return pd.Series({
+        "intercept": params["Intercept"],
+        "era_L": params["C(era, Poly).Linear"],
+        "era_Q": params["C(era, Poly).Quadratic"]
+    })
+
+
+boot_coef = pd.concat(
+    [
+        fit_bootstrap_model(
+            batting_era
+            .sample(
+                n=len(batting_era),
+                replace=True
+            )
+            .assign(
+                era=lambda df: pd.Categorical(
+                    df["era"],
+                    categories=["past", "steroid", "recent"],
+                    ordered=True
+                )
+            )
+        )
+        for _ in range(num_trials)
+    ],
+    axis=1
+).T
+
+boot_coef.head()
+
+# 구간추정치 계산
+boot_ci = pd.DataFrame({
+    "intercept_lower": [boot_coef["intercept"].quantile(0.025)],
+    "intercept_upper": [boot_coef["intercept"].quantile(0.975)],
+    
+    "era_L_lower": [boot_coef["era_L"].quantile(0.025)],
+    "era_L_upper": [boot_coef["era_L"].quantile(0.975)],
+    
+    "era_Q_lower": [boot_coef["era_Q"].quantile(0.025)],
+    "era_Q_upper": [boot_coef["era_Q"].quantile(0.975)]
+})
+
+boot_ci
+
+# 부트스트랩된 회귀계수들의 분포 요약
+boot_summary = (
+    boot_coef[["intercept", "era_L", "era_Q"]]
+    .describe()
+    .T
+)
+
+boot_summary    # R과 유사한 결과
+
+
+```
+
+:::
+
+## 문제 2-3
+
+문제 2-2에서 추출한 관측치를 사용하여 다음 질문에 답하라.
+
+1982년부터 2025년까지 홈런수의 분포가 어떻게 변해왔는지 시각화하고 홈런수를 반응변수로, 연도(`yearID`)를 독립변수로 하는 회귀분석을 실시하라. 연도의 효과가 거의 유의하지 않게 나온다면 분석을 올바르게 한 것이다. 타격에 대한 유력한 이론은 시간이 지날수록 홈런의 개수가 증가해 왔다는 것인데, 이 분석이 그러한 이론을 반증한다고 할 수 있는가? 아니라고 생각한다면 적절한 교락(confounding)요인을 회귀모형에 포함시켜 다시 분석을 한 뒤에 결과가 어떻게 변하는지 비교하라.
+
+
+### 답안
+
+::: {.panel-tabset}
+
+## R
+
+```{r}
+# 2-3
+library(Lahman)
+library(mdsr)
+library(broom)
+
+# 전처리
+batting_year <- Batting %>%
+  group_by(playerID, yearID) %>%
+  summarize(
+    HR = sum(HR, na.rm = TRUE),
+    AB = sum(AB, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  filter(yearID >= 1982, yearID <= 2025) %>%
+  mutate(
+    year_c = yearID - 1982  # yearID를 1982년 기준으로 중심화
+  )
+
+
+hr_year_summary <- batting_year %>%  # 연도별 홈런수 분포 요약
+  group_by(yearID) %>%
+  summarize(
+    n = n(),
+    mean_HR = mean(HR),
+    sd_HR = sd(HR),
+    median_HR = median(HR),
+    q75 = quantile(HR, 0.75),
+    q90 = quantile(HR, 0.90),
+    q95 = quantile(HR, 0.95),
+    q99 = quantile(HR, 0.99),
+    max_HR = max(HR),
+    .groups = "drop"
+  )
+
+# 대부분의 평균이 0에 가까워 쉽게 확인하기 어렵다.
+# 따라서 평균, 중앙값, 분위수의 연도별 변화를 꺾은선그래프로 그려보고자 한다 
+hr_year_summary %>%
+  select(yearID, mean_HR, median_HR, q90, q95, q99, max_HR) %>%
+  pivot_longer(
+    cols = -yearID,
+    names_to = "statistic",
+    values_to = "HR"
+  ) %>%
+  ggplot(aes(x = yearID, y = HR, linetype = statistic)) +  
+  geom_line() +
+  labs(
+    title = "Yearly Change in HR Distribution",
+    x = "Year",
+    y = "Home Runs",
+    linetype = "Statistic"
+  )
+# 스테로이드 시대의 수치가 높다고는 할 수 있겠다만 뚜렷한 선형적 근거가 있다고 보기 어렵다. 
+
+
+# 회귀모형 적합
+# 모형 : HR = beta0 + beta1 * year_c + e
+mod_hr_year <- lm(HR ~ year_c, data = batting_year)
+
+# 요약 통계
+broom::tidy(mod_hr_year, conf.int = TRUE)
+glance(mod_hr_year)
+
+# year_c의 평균에 따라 연도가 1년 증가할 때 선수 1명당 시즌 홈런 수가 평균적으로 약 0.00186개 증가한다고 추정할 수 있다. 
+# 하지만 이 값은 사실상 거의 0이므로 유의하다고 보기 어렵다. 
+# p-value가 0.482로 매우 크기 때문에 유의하다고 보기 어렵다.
+# 계수의 신뢰구간 안에 0이 포함됩니다. 연도에 따른 홈런 수는 증가했을 수도, 감소했을 수도, 변화가 없을 수도 있다. 
+# R-squared가 거의 0입니다.이는 연도 하나만으로 선수별 홈런 수 변동을 거의 전혀 설명하지 못함을 시사한다.
+# 잔차의 중앙값은 -4인 반면 최댓값은 69이다. 
+# 이로부터 대부분의 선수는 홈런을 거의 치지 않거나 0개에 가깝고, 일부 장타자만 매우 많은 홈런을 친다고 예상할 수 있으며
+# 위 근거로부터 연도의 효과만으로는 거의 유의하지 않으며, 단순획귀는 이 데이터 구조를 잘 설명하지 못한다. 
+
+
+# 홈런 수는 기본적으로 타석 수의 증가에 비례한다. 적절한 교락 요인은 타석 수(AB)라고 할 수 있으며, 
+# 이를 변수로 대입해 다시 적합해보고자 한다. 
+mod_hr_year_ab <- lm(HR ~ year_c + AB, data = batting_year)
+
+broom::tidy(mod_hr_year_ab, conf.int = TRUE)
+glance(mod_hr_year_ab)
+
+# year_c의 계수의 신뢰구간이 타수를 통제한 후에는 전 구간에서 양수이고 p-value도 매우 유의하다고 판정된다. 
+# 뿐만 아니라 모든 계수가 매우 유의하다고 판정된다. 
+# R-squared = 0.677로 설명력도 충분하다고 할 수 있다. 
+# 따라서 연도별 홈런 수의 중요한 교락요인은 타석이라고 주장할 수 있다. 
+# 하지만 (Intercept) 절편은 음수로 계산된다. 이는 선형회귀의 외삽 때문에 발생한 값으로 
+# 홈런 수가 음수가 될 수 없으니 실질적으로 해석하지 않는 것이 좋다.
+
+
+
+
+
+```
+
+## Python
+
+```{python}
+# 2-3
+
+import sys
+import numpy as np
+import pandas as pd
+import statsmodels.formula.api as smf
+
+from plotnine import (
+    ggplot, aes, geom_line, labs, theme_minimal
+)
+
+Batting=pd.DataFrame(pylahman.Batting())
+
+
+# 전처리
+batting_year = (
+    Batting
+    .groupby(["playerID", "yearID"], as_index=False)
+    .agg(
+        HR=("HR", lambda x: x.fillna(0).sum()),
+        AB=("AB", lambda x: x.fillna(0).sum())
+    )
+    .query("1982 <= yearID <= 2025")
+    .assign(
+        year_c=lambda df: df["yearID"] - 1982      # yearID를 1982년 기준으로 중심화
+    )
+)
+
+
+# 연도별 홈런 수 분포 요약
+hr_year_summary = (
+    batting_year
+    .groupby("yearID", as_index=False)
+    .agg(
+        n=("HR", "size"),
+        mean_HR=("HR", "mean"),
+        sd_HR=("HR", "std"),
+        median_HR=("HR", "median"),
+        q75=("HR", lambda x: x.quantile(0.75)),
+        q90=("HR", lambda x: x.quantile(0.90)),
+        q95=("HR", lambda x: x.quantile(0.95)),
+        q99=("HR", lambda x: x.quantile(0.99)),
+        max_HR=("HR", "max")
+    )
+)
+
+hr_year_summary
+
+# 대부분의 평균이 0에 가까워 쉽게 확인하기 어렵다.
+# 따라서 평균, 중앙값, 분위수의 연도별 변화를 꺾은선그래프로 그려보고자 한다.
+
+hr_year_long = (
+    hr_year_summary
+    [["yearID", "mean_HR", "median_HR", "q90", "q95", "q99", "max_HR"]]
+    .melt(
+        id_vars="yearID",
+        var_name="statistic",
+        value_name="HR"
+    )
+)
+
+p=(
+    ggplot(hr_year_long, aes(x="yearID", y="HR", linetype="statistic"))
+    + geom_line()
+    + labs(
+        title="Yearly Change in HR Distribution",
+        x="Year",
+        y="Home Runs",
+        linetype="Statistic"
+    )
+    + theme_minimal()
+)
+print(p)
+# 스테로이드 시대의 수치가 높다고는 할 수 있겠지만, 뚜렷한 선형적 근거가 있다고 보기 어렵다.
+
+# 회귀모형 적합. 모형: HR = beta0 + beta1 * year_c + e
+
+mod_hr_year = smf.ols(
+    formula="HR ~ year_c",
+    data=batting_year
+).fit()
+
+
+# broom::tidy(mod_hr_year, conf.int = TRUE)에 대응
+tidy_mod_hr_year = pd.DataFrame({
+    "term": mod_hr_year.params.index,
+    "estimate": mod_hr_year.params.values,
+    "std_error": mod_hr_year.bse.values,
+    "statistic": mod_hr_year.tvalues.values,
+    "p_value": mod_hr_year.pvalues.values
+})
+
+conf_int = mod_hr_year.conf_int()
+tidy_mod_hr_year["conf_low"] = conf_int[0].values
+tidy_mod_hr_year["conf_high"] = conf_int[1].values
+
+tidy_mod_hr_year
+
+# summary(mod_hr_year)에 대응
+print(mod_hr_year.summary())
+
+# year_c의 계수에 따라 연도가 1년 증가할 때
+# 선수 1명당 시즌 홈런 수가 평균적으로 얼마나 증가 또는 감소하는지 추정할 수 있다.
+# 하지만 year_c 계수가 사실상 거의 0에 가깝고, p-value가 크며, 신뢰구간에 0이 포함된다면
+# 연도에 따른 홈런 수 증가 효과가 유의하다고 보기 어렵다.
+# R-squared가 거의 0이면, 연도 하나만으로 선수별 홈런 수 변동을 거의 설명하지 못한다는 뜻이다.
+# 잔차의 중앙값은 음수이고 최댓값은 매우 클 수 있다.
+# 이는 대부분의 선수는 홈런을 거의 치지 않거나 0개에 가깝고,
+# 일부 장타자만 매우 많은 홈런을 치는 오른쪽 꼬리가 긴 분포를 갖기 때문이다.
+# 위 근거로부터 연도의 효과만으로는 거의 유의하지 않으며, 단순회귀는 이 데이터 구조를 잘 설명하지 못한다고 볼 수 있다.
+# 홈런 수는 기본적으로 타석 수의 증가에 비례한다.
+# 적절한 교락 요인은 타석 수 AB라고 할 수 있으며 이를 변수로 대입해 다시 적합한다.
+
+mod_hr_year_ab = smf.ols(
+    formula="HR ~ year_c + AB",
+    data=batting_year
+).fit()
+
+# broom::tidy(mod_hr_year_ab, conf.int = TRUE)에 대응
+tidy_mod_hr_year_ab = pd.DataFrame({
+    "term": mod_hr_year_ab.params.index,
+    "estimate": mod_hr_year_ab.params.values,
+    "std_error": mod_hr_year_ab.bse.values,
+    "statistic": mod_hr_year_ab.tvalues.values,
+    "p_value": mod_hr_year_ab.pvalues.values
+})
+
+conf_int_ab = mod_hr_year_ab.conf_int()
+tidy_mod_hr_year_ab["conf_low"] = conf_int_ab[0].values
+tidy_mod_hr_year_ab["conf_high"] = conf_int_ab[1].values
+
+tidy_mod_hr_year_ab
+
+# summary(mod_hr_year_ab)에 대응
+print(mod_hr_year_ab.summary())
+
+# R과 유사 
+```
+
+:::
+
+## 문제 3-1. Quarto 프로젝트 파일 설정
+
+`hw02.qmd`를 로컬 저장소에서 컴파일하면 `_site` 디렉토리가 생성되고 그 안에 HTML 및 수반되는 파일들이 만들어지는지 확인하라.
+
+## 문제 3-2. GitHub Actions 워크플로우 생성
+
+GitHub 저장소에 로컬 저장소가 push될 때마다 `.qmd` 파일 컴파일 등의 작업을 자동으로 하게 하는 일은 GitHub Actions에서 담당한다. 로컬 저장소의 `.github/workflows/` 디렉토리(없으면 만든다) 안에 `publish.yml` 파일을 아래와 같이 만든다.
+
+추가로 `hw02.qmd` 파일을 컴파일하기 위해 필요한 R과 Python 패키지들을 "# 추가로 필요한 패키지 설치" 부분에 기술한다.
+
+## 문제 3-3. GitHub Pages 설정 변경
+
+저장소를 웹페이지로 활용하는 부분은 GitHub Pages가 담당한다. 
+
+1. 문제 3-2까지의 작업을 push한 후, GitHub (원격)저장소에 `gh-pages` 브랜치가 생성됐는지 확인하라.
+
+2. GitHub 저장소의 Settings > Pages 메뉴로 이동하여 Build and deployment > Branch 섹션에서 브랜치를 `gh-pages`로 선택하고 폴더를 `/ (root)`로 설정한 뒤 저장하라.
+
+3. GitHub 저장소의 Actions 메뉴로 이동하여 2개의 워크플로우가 무사히 종료되었는지 확인하라.
+
+4. 다시 GitHub 저장소의 Settings > Pages 메뉴로 이동하여 상단에 "Your site is live at https://..." 안내가 보이는지 확인하라. 이 곳의 URL이 hw02.qmd로 생성한 웹페이지의 주소다. "Visit site" 버튼을 클릭하여 웹페이지를 브라우저에서 볼 수 있는지 확인하라.
+
+## 문제 3-4. 반복
+
+Quarto 프로젝트 설정에서 주피터 노트북 파일도 함께 생성하도록 설정하였다. 웹페이지에서 노트북을 내려받을 수 있도록 하기 위해 첫 페이지를 변경하고자 한다. 
+이를 위해 `README.md` 파일을 로컬 저장소 최상위 디렉토리에 다음과 같이 만들자. 
+
+이제 Quarto가 README.md를 첫 페이지로 인식하도록 하기 위해 `_quarto.yml`의 "Render Quarto" 앞에 다음을 추가하자
+
+작업을 GitHub 원격 저장소로 push한 후 문제 3-3의 3, 4번 과정을 반복하라.
+
+

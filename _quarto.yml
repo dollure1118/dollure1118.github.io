@@ -4,6 +4,14 @@ project:
   resources:
     - figures/  
 
+website:
+  navbar:
+    left:
+      - href: hw02_1.html
+        text: "1부"
+      - href: hw02_2.html
+        text: "2부"
+
 format:
   html:
     embed-resources: true
