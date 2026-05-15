@@ -86,7 +86,7 @@ library(babynames)
 glimpse(babynames)
 mdsr::make_babynames_dist 
 # 문제 : 각 이름을 가진 사람들이 2014년에 몇 명 정도 살아 있을지 추정한 열을 기존 tibble에 추가하는 것
-
+#####
 # 1. lifetables 자료 정리
 actuarial <- lifetables %>%
   mutate(
