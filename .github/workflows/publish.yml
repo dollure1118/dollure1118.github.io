@@ -72,7 +72,7 @@ jobs:
             "reticulate", "knitr", "rmarkdown", "tidyverse", "quarto",
             "babynames", "Lahman", "NHANES", "patchwork", "mosaicData",
             "mdsr", "ggplot2", "plotly", "gganimate", "gifski", "transformr",
-            "broom", "htmlwidgets"   # htmlwidgets 추가
+            "broom", "htmlwidgets", "skimr"   # htmlwidgets 추가
           ))
 
       - name: Create required directories

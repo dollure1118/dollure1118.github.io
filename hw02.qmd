@@ -130,6 +130,8 @@ ggplot(cubs_hr, aes(x = yearID, y = home_runs)) +
 
 ```{python}
 # 6.6.9.
+import os
+os.makedirs("figures", exist_ok=True)
 import pandas as pd
 import polars as pl
 import numpy as np
@@ -504,11 +506,11 @@ p <- onRender(
 # 현재 객체를 가져와 점에 커서를 올리면 실행
 # 최고기록갱신점에 커서를 올리는 경우 수평선 끝점에 대응하는 점을 계산, 해당 수평선만 보이게 
 # 붉은 점에 커서를 올릴 때만 해당 기록 유지선을 보이게 하기 위해 사용
-
+dir.create("figures", recursive = TRUE, showWarnings = FALSE)
 htmlwidgets::saveWidget(
   p,
   file = "figures/home_runs_interactive_R.html",
-  selfcontained = FALSE
+  selfcontained = TRUE
 )
 
 cat("[R interactive home run plot](figures/home_runs_interactive_R.html)")
@@ -586,11 +588,6 @@ all_plots_pages <- all_vars_pages %>%
 
 dir.create("figures/bmi_r", recursive = TRUE, showWarnings = FALSE)
 
-htmlwidgets::saveWidget(
-  p,
-  file = "figures/home_runs_interactive_R.html",
-  selfcontained = TRUE    # FALSE → TRUE: 의존 파일 폴더 생성 문제 방지
-)
 walk2(
   all_plots_pages,
   seq_along(all_plots_pages),
