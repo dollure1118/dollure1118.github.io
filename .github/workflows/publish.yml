@@ -23,18 +23,19 @@ jobs:
           python-version: '3.12'
           activate-environment: r-reticulate
           channels: conda-forge,defaults
+          channel-priority: strict
 
       - name: Install Python dependencies via Conda
         run: |
           conda install -n r-reticulate --override-channels -c conda-forge \
           python=3.12 \
           pip \
-          expat \ 
-          numpy pandas pyarrow \ 
+          expat \
+          numpy pandas pyarrow \
           matplotlib polars plotly scipy statsmodels plotnine \
           -y
 
-          conda run -n r-reticulate python -m pip install --upgrade pip 
+          conda run -n r-reticulate python -m pip install --upgrade pip
           conda run -n r-reticulate python -m pip install --no-deps pybabynames pylahman
           conda run -n r-reticulate python -m pip check
         # 추가로 필요한 패키지 설치
