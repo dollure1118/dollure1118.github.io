@@ -56,6 +56,9 @@ jobs:
       - name: Prepare README as Index
         run: cp README.md index.md
 
+      - name: Prepare README as Index
+        run: cp README.md index.md
+
       - name: Render Quarto
         run: |
           export RETICULATE_PYTHON=$(conda info --base)/envs/r-reticulate/bin/python
