@@ -26,7 +26,7 @@ jobs:
 
       - name: Install Python dependencies via Conda
         run: |
-          conda install -n r-reticulate numpy pandas matplotlib polars
+          conda install -n r-reticulate -c conda-forge numpy pandas matplotlib polars plotly scipy statsmodels plotnine -y conda run -n r-reticulate python -m pip install pybabynames pylahman
         # 추가로 필요한 패키지 설치
 
         shell: bash -l {0}
@@ -43,7 +43,7 @@ jobs:
         env:
           GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          install.packages(c("reticulate", "knitr", "rmarkdown", "tidyverse", "quarto", "babynames", "Lahman", "NHANES", "patchwork", "mosaicData", "mdsr", "ggplot2", "plotly", "gganimate", "gifski", "transformr", "ggtext", "ggrepel", "ggforce", "ggdist", "ggbeeswarm", "ggsci", "ggthemes", "ggpubr", "ggExtra", "ggVennDiagram"))
+          install.packages(c("reticulate", "knitr", "rmarkdown", "tidyverse", "quarto", "babynames", "Lahman", "NHANES", "patchwork", "mosaicData", "mdsr", "ggplot2", "plotly", "gganimate", "gifski", "transformr", "broom"))
         # 추가로 필요한 패키지 설치
         shell: Rscript {0}
 
