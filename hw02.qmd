@@ -586,6 +586,11 @@ all_plots_pages <- all_vars_pages %>%
 
 dir.create("figures/bmi_r", recursive = TRUE, showWarnings = FALSE)
 
+htmlwidgets::saveWidget(
+  p,
+  file = "figures/home_runs_interactive_R.html",
+  selfcontained = TRUE    # FALSE → TRUE: 의존 파일 폴더 생성 문제 방지
+)
 walk2(
   all_plots_pages,
   seq_along(all_plots_pages),
@@ -953,6 +958,9 @@ gd.on('plotly_unhover', function(eventData) {{
     Plotly.restyle(gd, {{visible: false}}, lineIndices);
 }});
 """
+
+import os
+os.makedirs("figures", exist_ok=True)   # ← 추가
 
 fig.write_html(
     "figures/home_runs_interactive_py.html",
